@@ -67,7 +67,7 @@ async function login(req, res, next) {
     const user = await User.findOne({ email })
   
     if (!user) {
-      const error = new Error("Invalid email")
+      const error = new Error("Invalid email or sign up first")
       error.statusCode = 401
       return next(error)
     }
