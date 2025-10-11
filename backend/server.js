@@ -6,6 +6,8 @@ const authRoutes = require("./routes/auth")
 const profileRoutes = require("./routes/profile")
 const roomRoutes = require("./routes/room")
 const errorHandler = require("./middlewares/errorHandler")
+const logger = require("./loggers/logger")
+const httpLogger = require("./loggers/httpLogger")
 const authenticateToken = require("./middlewares/authMiddleware")
 const connectDB = require("./db/connect")
 const app = express()
@@ -23,6 +25,7 @@ app.use("/auth", authRoutes)
 app.use("/users", authenticateToken, profileRoutes)
 app.use("/rooms", authenticateToken, roomRoutes)
 
+app.use(httpLogger)
 app.use(errorHandler)
 
 app.listen(process.env.PORT, () => {

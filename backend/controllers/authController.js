@@ -6,7 +6,7 @@ const RefreshToken = require("../models/RefreshToken")
 async function register(req, res, next) {
   try {
     const { email, password } = req.body
-    if (!email || !password) {
+    if (!emai || !password) {
       const error = new Error("email or password missing")
       error.statusCode = 400
       return next(error)
