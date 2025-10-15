@@ -6,8 +6,8 @@ An application for chatting and discussion. You can create new rooms and share t
 1. Clone or download the repository
 2. Run `npm install` in both the **server** and **client** folders
 
-# Usage
----
+*Usage*
+
 ## Backend
 
 ### Development
@@ -22,6 +22,7 @@ An application for chatting and discussion. You can create new rooms and share t
 - App server on `http:localhost:3000`
 ### Production
 `npm run start`
+
 
 
 
