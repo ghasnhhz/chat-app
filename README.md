@@ -8,18 +8,19 @@ An application for chatting and discussion. You can create new rooms and share t
 
 # Usage
 ## Backend
-***
+
 ### Development
 `npm run devStart`
 - API served on `http:localhost:5000` with nodemon
 ### Production
 `npm run start`
 ## Frontend
-***
+
 ### Development
 `npm run build`
 - App server on `http:localhost:3000`
 ### Production
 `npm run start`
+
 
 
