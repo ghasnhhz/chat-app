@@ -2,7 +2,78 @@ import { getAuthToken, setAuthToken, clearAuthToken } from '../utils/tokenStorag
 
 const API_URL = 'http://localhost:5000';
 
+let isRefreshing = false;
+let failedQueue = [];
+
+const processQueue = (error, token = null) => {
+  failedQueue.forEach(prom => {
+    if (error) {
+      prom.reject(error);
+    } else {
+      prom.resolve(token);
+    }
+  });
+  failedQueue = [];
+};
+
 const api = {
+  async fetchWithAuth(url, options = {}) {
+    const token = getAuthToken();
+    
+    // Add authorization header
+    const headers = {
+      ...options.headers,
+      'Authorization': `Bearer ${token}`
+    };
+
+    let response = await fetch(url, {
+      ...options,
+      headers,
+      credentials: 'include'
+    });
+
+    // If unauthorized (token expired), try to refresh
+    if (response.status === 401) {
+      if (isRefreshing) {
+        // Wait for the token to be refreshed
+        return new Promise((resolve, reject) => {
+          failedQueue.push({ resolve, reject });
+        }).then(token => {
+          headers.Authorization = `Bearer ${token}`;
+          return fetch(url, { ...options, headers, credentials: 'include' });
+        });
+      }
+
+      isRefreshing = true;
+
+      try {
+        // Refresh the token
+        const refreshData = await this.refresh();
+        const newToken = refreshData.token;
+        setAuthToken(newToken);
+        
+        processQueue(null, newToken);
+        isRefreshing = false;
+
+        // Retry the original request with new token
+        headers.Authorization = `Bearer ${newToken}`;
+        response = await fetch(url, {
+          ...options,
+          headers,
+          credentials: 'include'
+        });
+      } catch (refreshError) {
+        processQueue(refreshError, null);
+        isRefreshing = false;
+        clearAuthToken();
+        window.location.href = '/login';
+        throw refreshError;
+      }
+    }
+
+    return response;
+  },
+
   async register(email, password) {
     const res = await fetch(`${API_URL}/auth/register`, {
       method: 'POST',
@@ -62,18 +133,12 @@ const api = {
   },
 
   async createProfile(username, age, role) {
-    const token = getAuthToken();
-    if (!token) throw new Error('No authentication token');
-    
-    const res = await fetch(`${API_URL}/users/profile`, {
+    const res = await this.fetchWithAuth(`${API_URL}/users/profile`, {
       method: 'PUT',
-      headers: { 
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${token}`
-      },
-      body: JSON.stringify({ username, age, role }),
-      credentials: 'include'
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ username, age, role })
     });
+    
     if (!res.ok) {
       const errorData = await res.json().catch(() => ({ message: 'Failed to update profile' }));
       throw new Error(errorData.message || 'Failed to update profile');
@@ -82,16 +147,12 @@ const api = {
   },
 
   async createRoom(name) {
-    const token = getAuthToken();
-    const res = await fetch(`${API_URL}/rooms/create`, {
+    const res = await this.fetchWithAuth(`${API_URL}/rooms/create`, {
       method: 'POST',
-      headers: { 
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${token}`
-      },
-      body: JSON.stringify({ name }),
-      credentials: 'include'
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name })
     });
+    
     if (!res.ok) {
       const errorData = await res.json().catch(() => ({ message: 'Failed to create room' }));
       throw new Error(errorData.message || 'Failed to create room');
@@ -100,12 +161,10 @@ const api = {
   },
 
   async getMyRooms() {
-    const token = getAuthToken();
-    const res = await fetch(`${API_URL}/rooms/my-rooms`, {
-      method: 'GET',
-      headers: { 'Authorization': `Bearer ${token}` },
-      credentials: 'include'
+    const res = await this.fetchWithAuth(`${API_URL}/rooms/my-rooms`, {
+      method: 'GET'
     });
+    
     if (!res.ok) {
       const errorData = await res.json().catch(() => ({ message: 'Failed to fetch rooms' }));
       throw new Error(errorData.message || 'Failed to fetch rooms');
@@ -114,12 +173,10 @@ const api = {
   },
 
   async getRoomById(roomId) {
-    const token = getAuthToken();
-    const res = await fetch(`${API_URL}/rooms/${roomId}`, {
-      method: 'GET',
-      headers: { 'Authorization': `Bearer ${token}` },
-      credentials: 'include'
+    const res = await this.fetchWithAuth(`${API_URL}/rooms/${roomId}`, {
+      method: 'GET'
     });
+    
     if (!res.ok) {
       const errorData = await res.json().catch(() => ({ message: 'Failed to fetch room' }));
       throw new Error(errorData.message || 'Failed to fetch room');
@@ -128,12 +185,10 @@ const api = {
   },
 
   async joinRoom(inviteToken) {
-    const token = getAuthToken();
-    const res = await fetch(`${API_URL}/rooms/join/${inviteToken}`, {
-      method: 'POST',
-      headers: { 'Authorization': `Bearer ${token}` },
-      credentials: 'include'
+    const res = await this.fetchWithAuth(`${API_URL}/rooms/join/${inviteToken}`, {
+      method: 'POST'
     });
+    
     if (!res.ok) {
       const errorData = await res.json().catch(() => ({ message: 'Failed to join room' }));
       throw new Error(errorData.message || 'Failed to join room');
@@ -142,12 +197,10 @@ const api = {
   },
 
   async leaveRoom(roomId) {
-    const token = getAuthToken();
-    const res = await fetch(`${API_URL}/rooms/${roomId}/leave`, {
-      method: 'POST',
-      headers: { 'Authorization': `Bearer ${token}` },
-      credentials: 'include'
+    const res = await this.fetchWithAuth(`${API_URL}/rooms/${roomId}/leave`, {
+      method: 'POST'
     });
+    
     if (!res.ok) {
       const errorData = await res.json().catch(() => ({ message: 'Failed to leave room' }));
       throw new Error(errorData.message || 'Failed to leave room');
@@ -156,15 +209,25 @@ const api = {
   },
 
   async deleteRoom(roomId) {
-    const token = getAuthToken();
-    const res = await fetch(`${API_URL}/rooms/${roomId}`, {
-      method: 'DELETE',
-      headers: { 'Authorization': `Bearer ${token}` },
-      credentials: 'include'
+    const res = await this.fetchWithAuth(`${API_URL}/rooms/${roomId}`, {
+      method: 'DELETE'
     });
+    
     if (!res.ok) {
       const errorData = await res.json().catch(() => ({ message: 'Failed to delete room' }));
       throw new Error(errorData.message || 'Failed to delete room');
+    }
+    return res.json();
+  },
+
+  async getMessages(roomId) {
+    const res = await this.fetchWithAuth(`${API_URL}/messages/${roomId}?limit=100`, {
+      method: 'GET'
+    });
+    
+    if (!res.ok) {
+      const errorData = await res.json().catch(() => ({ message: 'Failed to fetch messages' }));
+      throw new Error(errorData.message || 'Failed to fetch messages');
     }
     return res.json();
   }

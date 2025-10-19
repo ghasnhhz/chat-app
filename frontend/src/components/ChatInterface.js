@@ -1,31 +1,104 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Send } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
+import socketService from '../services/socket';
+import api from '../services/api';
 
 const ChatInterface = ({ room }) => {
   const { user } = useAuth();
   const [message, setMessage] = useState('');
   const [messages, setMessages] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const messagesEndRef = useRef(null);
 
-  // Clear messages when room changes
+  // Scroll to bottom when new messages arrive
+  const scrollToBottom = () => {
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  };
+
   useEffect(() => {
-    setMessages([]);
-  }, [room._id]); // Reset when room ID changes
+    scrollToBottom();
+  }, [messages]);
+
+  // Load messages and setup socket when room changes
+  useEffect(() => {
+    const loadMessagesAndConnect = async () => {
+      setLoading(true);
+      setMessages([]);
+
+      try {
+        // Load old messages from database
+        const data = await api.getMessages(room._id);
+        setMessages(data.messages);
+      } catch (err) {
+        console.error('Failed to load messages:', err);
+      } finally {
+        setLoading(false);
+      }
+
+      // Connect to socket
+      socketService.connect();
+
+      // Join the room
+      socketService.joinRoom(room._id);
+
+      // Listen for new messages
+      socketService.onReceiveMessage((newMessage) => {
+        console.log('Received message:', newMessage);
+        setMessages((prev) => {
+          // Check if message already exists (prevent duplicates)
+          const exists = prev.some(msg => msg._id === newMessage._id);
+          if (exists) {
+            return prev;
+          }
+          return [...prev, newMessage];
+        });
+      });
+
+      // Listen for errors
+      socketService.onMessageError((error) => {
+        console.error('Message error:', error);
+        alert('Failed to send message');
+      });
+    };
+
+    loadMessagesAndConnect();
+
+    // Cleanup when leaving room
+    return () => {
+      socketService.leaveRoom(room._id);
+      socketService.offReceiveMessage();
+    };
+  }, [room._id]);
 
   const handleSend = (e) => {
     e.preventDefault();
     if (!message.trim()) return;
 
-    // TODO: Send via Socket.io
-    const newMessage = {
-      _id: Date.now(),
-      text: message,
-      user: user,
-      timestamp: new Date().toISOString()
+    const messageData = {
+      roomId: room._id,
+      text: message.trim(),
+      userId: user._id,
+      username: user.username
     };
-    setMessages([...messages, newMessage]);
+
+    // Send via Socket.io - server will broadcast back
+    socketService.sendMessage(messageData);
+    
+    // Clear input immediately
     setMessage('');
   };
+
+  if (loading) {
+    return (
+      <div className="h-full flex items-center justify-center bg-gradient-to-br from-gray-50 to-white">
+        <div className="text-center">
+          <div className="w-12 h-12 border-4 border-indigo-600 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
+          <p className="text-gray-600">Loading messages...</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="h-full flex flex-col bg-gradient-to-br from-gray-50 to-white">
@@ -40,31 +113,36 @@ const ChatInterface = ({ room }) => {
             <p className="text-sm">Start the conversation!</p>
           </div>
         ) : (
-          messages.map((msg) => (
-            <div
-              key={msg._id}
-              className={`flex ${msg.user._id === user._id ? 'justify-end' : 'justify-start'} animate-slideUp`}
-            >
+          <>
+            {messages.map((msg) => (
               <div
-                className={`max-w-xs lg:max-w-md px-5 py-3 rounded-2xl shadow-md ${
-                  msg.user._id === user._id
-                    ? 'bg-gradient-to-r from-indigo-600 to-purple-600 text-white rounded-br-sm'
-                    : 'bg-white text-gray-800 rounded-bl-sm border border-gray-200'
-                }`}
+                key={msg._id}
+                className={`flex ${
+                  msg.userId._id === user._id ? 'justify-end' : 'justify-start'
+                } animate-slideUp`}
               >
-                <p className="text-xs font-semibold mb-1 opacity-75">
-                  {msg.user.username}
-                </p>
-                <p className="break-words">{msg.text}</p>
-                <p className="text-xs mt-2 opacity-75">
-                  {new Date(msg.timestamp).toLocaleTimeString([], {
-                    hour: '2-digit',
-                    minute: '2-digit'
-                  })}
-                </p>
+                <div
+                  className={`max-w-xs lg:max-w-md px-5 py-3 rounded-2xl shadow-md ${
+                    msg.userId._id === user._id
+                      ? 'bg-gradient-to-r from-indigo-600 to-purple-600 text-white rounded-br-sm'
+                      : 'bg-white text-gray-800 rounded-bl-sm border border-gray-200'
+                  }`}
+                >
+                  <p className="text-xs font-semibold mb-1 opacity-75">
+                    {msg.userId.username}
+                  </p>
+                  <p className="break-words">{msg.text}</p>
+                  <p className="text-xs mt-2 opacity-75">
+                    {new Date(msg.createdAt).toLocaleTimeString([], {
+                      hour: '2-digit',
+                      minute: '2-digit'
+                    })}
+                  </p>
+                </div>
               </div>
-            </div>
-          ))
+            ))}
+            <div ref={messagesEndRef} />
+          </>
         )}
       </div>
 
@@ -77,6 +155,7 @@ const ChatInterface = ({ room }) => {
             onChange={(e) => setMessage(e.target.value)}
             className="flex-1 px-4 py-3 rounded-xl border-2 border-gray-200 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition"
             placeholder="Type a message..."
+            maxLength={1000}
           />
           <button
             type="submit"

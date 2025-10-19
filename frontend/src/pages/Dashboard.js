@@ -271,7 +271,7 @@ const Dashboard = () => {
           ) : (
             <div className="h-full flex flex-col items-center justify-center text-gray-400">
               <div className="w-32 h-32 bg-gradient-to-br from-gray-100 to-gray-200 rounded-full flex items-center justify-center mb-4">
-                <span className="text-5xl">👈</span>
+                <span className="text-5xl">🡸</span>
               </div>
               <p className="text-lg font-medium">Select a room to start chatting</p>
             </div>

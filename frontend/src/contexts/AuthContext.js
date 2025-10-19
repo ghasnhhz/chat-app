@@ -1,6 +1,7 @@
 import React, { createContext, useState, useEffect, useContext } from 'react';
 import api from '../services/api';
 import { clearAuthToken } from '../utils/tokenStorage';
+import socketService from '../services/socket';
 
 const AuthContext = createContext(null);
 
@@ -46,6 +47,7 @@ export const AuthProvider = ({ children }) => {
 
   const logout = async () => {
     await api.logout();
+    socketService.disconnect();
     setUser(null);
     clearAuthToken();
   };
@@ -53,6 +55,8 @@ export const AuthProvider = ({ children }) => {
   const updateUser = (userData) => {
     setUser(userData);
   };
+
+
 
   return (
     <AuthContext.Provider value={{ user, loading, login, register, logout, updateUser, checkAuth }}>
