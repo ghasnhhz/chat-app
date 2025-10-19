@@ -79,7 +79,7 @@ async function joinRoom(req, res, next) {
     }
 
     if (room.members.includes(userId)) {
-      res.status(200).json({
+      return res.status(200).json({
         message: "You are already in that room",
         room
       })
